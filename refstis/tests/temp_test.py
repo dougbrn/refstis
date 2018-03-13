@@ -6,6 +6,7 @@ import os
 import yaml
 import numpy as np
 from subprocess import call
+import glob
 
 SERVER = 'plhstins2.stsci.edu'
 DATA_DIR = '/ifs/archive/ops/hst/public/'
@@ -31,15 +32,12 @@ def getdata(ipppssoot, raw=False):
 
 if __name__ == '__main__':
     source = "ocqq9tq6q_flt.fits"
+    print("Source Dark: ",source)
     # Select Source Dark
     dark = fits.open(os.path.join("data/sources/", source))
 
-    # Grab Keyword Values
-    print(dark[1].header['OCCDHTAV'])
-    print(dark[0].header['TDATEOBS'])
-    reffile = dark[0].header['DARKFILE'].split('$')[-1]
-
     # Grab Basedark Files (anneal period)
+    print("Grabbing Basedark Files...")
     with open('data/anneal_boundaries_v2.yml') as f:
         boundaries = yaml.load(f)
 
@@ -54,21 +52,39 @@ if __name__ == '__main__':
             print(e)
             print('')
             continue
-    import pdb; pdb.set_trace()
+
+    # Generate Basedark
+    print("Generating Basedark...")
+    basedark_fnames = glob.glob('data/*.fits')
+    basedark.make_basedark(basedark_fnames, refdark_name='data/products/basedark.fits')
+
+    print("Removing Basedark Inputs...")
     call('rm data/*.fits', shell=True)  # Delete all basedark inputs
-    import pdb; pdb.set_trace()
+
     # Grab Weekdark Files
-    reffile = '/grp/hst/cdbs/oref/'+reffile
-    weekdark_files = str(fits.open(reffile)[0].header['HISTORY']).split("The following input files were used:")[-1].split("_flt.fits")[:-1]
+    print("Grabbing Weekdark Files...")
+    reffile = dark[0].header['DARKFILE'].split('$')[-1]
+    reffile_path = '/grp/hst/cdbs/oref/'+reffile
+    weekdark_files = str(fits.open(reffile_path)[0].header['HISTORY']
+                         ).split("The following input files were used:")[-1].split("_flt.fits")[:-1]
 
     # Grab darks used in generation of the source darks weekdark ref file (dark dark dark dark...)
     for ipppssoot in weekdark_files:
         try:
-            getdata(ipppssoot, raw=False)
+            getdata(ipppssoot[1:], raw=False)
         except IOError as e:
             print(e)
             print('')
             continue
+
+    # Generate Weekdark
+    print("Generating Weekdark...")
+    weekdark_fnames = glob.glob('data/*.fits')
+    weekdark.make_weekdark(weekdark_fnames, refdark_name=os.path.join("data/products/", reffile),
+                           thebasedark='data/products/basedark.fits')
+
+    print("Removing Weekdark Files...")
+    call('rm data/*.fits', shell=True)  # Delete all weekdark inputs
 
 
 

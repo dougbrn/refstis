@@ -32,7 +32,7 @@ def getdata(ipppssoot, raw=False):
 
 if __name__ == '__main__':
     source = "ocqq9tq6q_flt.fits"
-    print("Source Dark: ",source)
+    print("Source Dark: ", source)
     # Select Source Dark
     dark = fits.open(os.path.join("data/sources/", source))
 

@@ -198,7 +198,7 @@ def update_header_from_input(filename, input_list):
         hdu_out[0].header.add_history('extension of the output reference bias file.')
 
     elif targname == 'DARK':
-        hdu_out[0].header['REF_TEMP'] = 18
+        hdu_out[0].header['REF_TEMP'] = 20.0
         hdu_out[0].header['DRK_VS_T'] = 0.07
 
         hdu_out[0].header.add_history('This superdark image is a combination of 2 images.')
@@ -949,7 +949,7 @@ def apply_dark_correction(filename, expstart):
     """Perform temperature scaling to input dark file
 
     All science extensions in the input filename will be scaled to the reference
-    temperatue of 18.0 c.
+    temperatue of 20.0 c.
 
     Parameters
     ----------

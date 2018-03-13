@@ -961,7 +961,7 @@ def apply_dark_correction(filename, expstart):
     """
 
     dark_v_temp = 0.07
-    s2ref_temp = 18.0
+    s2ref_temp = 20.0
     with pyfits.open(filename, mode = 'update') as ofile:
         if 'tempcorr' not in ofile[0].header:
             nextend = ofile[0].header['nextend']

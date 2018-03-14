@@ -9,6 +9,9 @@ from astropy.time import Time
 import math
 import sqlite3
 import datetime
+import time
+import csv
+from scipy import stats
 
 from stistools.calstis import calstis
 from stistools.ocrreject import ocrreject
@@ -960,19 +963,66 @@ def apply_dark_correction(filename, expstart):
 
     """
 
-    dark_v_temp = 0.07
-    s2ref_temp = 18.0
+    #dark_v_temp = 0.07
+    #s2ref_temp = 18.0
     with pyfits.open(filename, mode = 'update') as ofile:
         if 'tempcorr' not in ofile[0].header:
             nextend = ofile[0].header['nextend']
 
+            #Retreive decimal year, exposure length and darkrates
+            date = datetime.datetime(*[int(item) for item in ofile[1].header['DATE-OBS'].split('-')])
+            startOfThisYear = datetime.datetime(year=date.year, month=1, day=1)
+            startOfNextYear = datetime.datetime(year=date.year+1, month=1, day=1)
+            yearElapsed = time.mktime(date.timetuple()) - time.mktime(startOfThisYear.timetuple())
+            yearDuration = time.mktime(startOfNextYear.timetuple()) - time.mktime(startOfThisYear.timetuple())
+            year = date.year + yearElapsed/yearDuration
+
+            exptime = ofile[1].header['EXPTIME']
+            gain = ofile[0].header['ATODGAIN']
+            occdhtav = ofile[1].header['OCCDHTAV']
+
+            dark_rate = (np.array(ofile[1].data)/exptime)*gain
+            dark_svrate = np.copy(dark_rate)
+            #Apply first order scaling to dark to estimate dark rate at 18 deg C
+            #import pdb; pdb.set_trace()
+            factor = 1.0 / (1.0 + 0.07 * (float(occdhtav) - 18.0))
+            dark_svrate = dark_svrate * factor
+            dark_svrate[dark_svrate <= 0] = 10**-3.0 #Use low end value for negative counts
+            dark_svrate[dark_svrate >= 10**2.0] = 10**2.0 #Use high end value for very hot pixel, don't extrapolate
+            dark_svrate=np.log10(dark_svrate)
+
+            #Optimal Parameters found by least squares
+            #for params in csv.reader(open('sv_params.csv', 'r'),delimiter=' ',quoting=csv.QUOTE_NONNUMERIC):
+            #loc_slope1,loc_int1,loc_slope2,loc_int2,scale_slope1,scale_int1,scale_slope2,scale_int2,shape_slope1,shape_int1,shape_slope2,shape_int2,c,d=params
+            loc_slope1,loc_int1,loc_slope2,loc_int2 =[ 0.00904216423821, -20.1175582084, 0.0832611971458, -169.824175944]
+            scale_slope1,scale_int1,scale_slope2,scale_int2 = [ 0.00994840545477, -7.68477975672, 0.0838945193203, -156.841306338]
+            shape_slope1,shape_int1,shape_slope2,shape_int2 = [-3.55040632906, 7163.2547025, -1.06569713067, 2170.30228595]
+            c,d = [-0.0136177821373, 0.00727242996398]
+            #Time dependent parameters for a skewed norm distribution
+            loc = np.piecewise(year,
+                                   [(year <= 2010.3),(year > 2010.3)],
+                                   [lambda year:loc_slope1 * year + loc_int1,
+                                    lambda year: loc_slope2 * year + loc_int2])
+            scale = np.piecewise(year,
+                                   [(year <= 2010.3),(year > 2010.3)],
+                                   [lambda year:scale_slope1 * year + scale_int1,
+                                    lambda year:scale_slope2 * year + scale_int2])
+            shape = np.piecewise(year,
+                                   [(year <= 2010.3),(year > 2010.3)],
+                                   [lambda year:shape_slope1 * year + shape_int1,
+                                    lambda year:shape_slope2 * year + shape_int2])
+
+            #Rate dependent distribution -- Skewed Norm + Linear + const
+            t = (dark_svrate-loc) / scale
+            sv_matrix = np.array(2 / scale * stats.norm.pdf(t) * stats.norm.cdf(shape*t) + c*dark_svrate + d)
+
             for ext in np.arange(1, nextend, 3):
                 occdhtav = ofile[ext].header['OCCDHTAV']
-                factor = 1.0 / (1.0 + dark_v_temp * (float(occdhtav) - s2ref_temp))
-                ofile[ext].data = ofile[ext].data * factor
-                print('{}, ext {}: Scaling data by '.format(filename, ext), factor, ' for temperature: ', occdhtav)
+                factor = 1.0 / (1.0 + np.array(sv_matrix) * (float(occdhtav) - 18.0))
+                ofile[ext].data = np.array(ofile[ext].data) * np.array(factor)
+                print('{}, ext {}: Scaling data by 2nd order method'.format(filename, ext), ' for temperature: ', occdhtav)
                 ofile[ext+1].data = np.sqrt((ofile[ext+1].data)**2 * (factor**2)) #Modify the error array
-                ofile[ext].header.add_history('File scaled for Side-2 temperature uncertainty by data * (1.0 + %f * (%f - %f)) following description is STIS TIR 2004-01' %(dark_v_temp, occdhtav, s2ref_temp))
+                ofile[ext].header.add_history('File scaled for Side-2 temperature uncertainty by 2nd order method')
 
             ofile[0].header['tempcorr'] = 'COMPLETE'
         else:

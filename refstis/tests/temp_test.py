@@ -31,47 +31,54 @@ def getdata(ipppssoot, raw=False):
 
 
 if __name__ == '__main__':
-    source = "ocqq9tq6q_flt.fits"
+    source = "obn31lmvq_flt.fits"
     print("Source Dark: ", source)
+    basedark_exists = False
     # Select Source Dark
     dark = fits.open(os.path.join("data/sources/", source))
 
-    # Grab Basedark Files (anneal period)
-    print("Grabbing Basedark Files...")
-    with open('data/anneal_boundaries_v2.yml') as f:
-        boundaries = yaml.load(f)
+    if not basedark_exists:
+        # Grab Basedark Files (anneal period)
+        print("Grabbing Basedark Files...")
+        with open('data/anneal_boundaries_v2.yml') as f:
+            boundaries = yaml.load(f)
 
-    dataset = source.split('_')[0].upper()
-    anneal_mask = [np.any(np.array([dataset in d.values() for d in boundaries[i]['darks']]))
-                   for i in range(len(boundaries))]
-    basedark_files = [d.get('exposure').lower() for d in np.array(boundaries)[anneal_mask][0]['darks']]
-    for ipppssoot in basedark_files:
-        try:
-            getdata(ipppssoot, raw=False)
-        except IOError as e:
-            print(e)
-            print('')
-            continue
+        dataset = source.split('_')[0].upper()
+        anneal_mask = [np.any(np.array([dataset in d.values() for d in boundaries[i]['darks']]))
+                       for i in range(len(boundaries))]
+        basedark_files = [d.get('exposure').lower() for d in np.array(boundaries)[anneal_mask][0]['darks']]
+        for ipppssoot in basedark_files:
+            try:
+                getdata(ipppssoot, raw=False)
+            except IOError as e:
+                print(e)
+                print('')
+                continue
 
-    # Generate Basedark
-    print("Generating Basedark...")
-    basedark_fnames = glob.glob('data/*.fits')
-    basedark.make_basedark(basedark_fnames, refdark_name='data/products/basedark.fits')
+        # Generate Basedark
+        print("Generating Basedark...")
+        basedark_fnames = glob.glob('data/*.fits')
+        basedark.make_basedark(basedark_fnames, refdark_name='data/products/basedark.fits')
 
-    print("Removing Basedark Inputs...")
-    call('rm data/*.fits', shell=True)  # Delete all basedark inputs
+        print("Removing Basedark Inputs...")
+        call('rm data/*.fits', shell=True)  # Delete all basedark inputs
 
     # Grab Weekdark Files
     print("Grabbing Weekdark Files...")
     reffile = dark[0].header['DARKFILE'].split('$')[-1]
     reffile_path = '/grp/hst/cdbs/oref/'+reffile
     weekdark_files = str(fits.open(reffile_path)[0].header['HISTORY']
-                         ).split("The following input files were used:")[-1].split("_flt.fits")[:-1]
+                         ).split("The following input dark files were used:")[-1].split("_flt.fits")[:-1]
+    strt_idx = 1
+    if weekdark_files == []:
+        weekdark_files = str(fits.open(reffile_path)[0].header['HISTORY']
+                             ).split("The following input dark files were used:")[-1].split('\n')[1:-1]
+        strt_idx = 2
 
     # Grab darks used in generation of the source darks weekdark ref file (dark dark dark dark...)
     for ipppssoot in weekdark_files:
         try:
-            getdata(ipppssoot[1:], raw=False)
+            getdata(ipppssoot[strt_idx:], raw=False)
         except IOError as e:
             print(e)
             print('')

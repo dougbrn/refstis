@@ -7,6 +7,7 @@ import yaml
 import numpy as np
 from subprocess import call
 import glob
+from git import Repo
 
 SERVER = 'plhstins2.stsci.edu'
 DATA_DIR = '/ifs/archive/ops/hst/public/'
@@ -31,7 +32,7 @@ def getdata(ipppssoot, raw=False):
 
 
 if __name__ == '__main__':
-    source = "obn31lmvq_flt.fits"
+    source = "odbp4fsyq_flt.fits"
     print("Source Dark: ", source)
     basedark_exists = False
     # Select Source Dark
@@ -85,9 +86,20 @@ if __name__ == '__main__':
             continue
 
     # Generate Weekdark
+    repo = Repo("../../")
+    branch = repo.active_branch
+    if branch.name == "master":
+        out_path = "data/products/orig_firstorder/"
+    elif branch.name == "ref_diff":
+        out_path = "data/products/diffref_firstorder/"
+    elif branch.name == "second_order":
+        out_path = "data/products/orig_secorder/"
+    else:
+        out_path = "data/products/"
+
     print("Generating Weekdark...")
     weekdark_fnames = glob.glob('data/*.fits')
-    weekdark.make_weekdark(weekdark_fnames, refdark_name=os.path.join("data/products/", reffile),
+    weekdark.make_weekdark(weekdark_fnames, refdark_name=os.path.join(out_path, reffile),
                            thebasedark='data/products/basedark.fits')
 
     print("Removing Weekdark Files...")
